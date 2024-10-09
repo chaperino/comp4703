@@ -67,30 +67,60 @@ def comp_metrics(pred_list, gold_list):
     precision = tp / (tp + fp) if tp + fp > 0 else 0
     recall = tp / (tp + fn) if tp + fn > 0 else 0
     f1 = 2 * (precision * recall) / (precision + recall) if precision + recall > 0 else 0
+    return precision, recall, f1
 
-    # Add BertScore
-    P, R, bert_f1 = bert_score.score(pred_list, gold_list, lang="en", rescale_with_baseline=True)
-    bert_f1_score = float(bert_f1.mean())
-
-    # Add ROUGE-L calculation
-    scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
+# New comp_metrics_new with BertScore, ROUGE, and METEOR added
+def comp_metrics_new(pred_list, gold_list):
+    prec_list = []
+    recall_list = []
+    f1_list = []
+    bert_f1_list = []
     rouge_f1_list = []
-    for pred, gold in zip(pred_list, gold_list):
+    meteor_f1_list = []
+
+    # Initialize ROUGE scorer
+    scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
+
+    for gold, pred in zip(gold_list, pred_list):
+        # Calculate word overlap metrics (as in original function)
+        c, plen, glen = count_overlap(gold, pred)
+
+        # Precision, Recall, and F1 (Original)
+        precision = float(c)/plen if plen > 0 else 0.0
+        recall = float(c)/glen if glen > 0 else 0.0
+        f1 = 2 * (precision * recall) / (precision + recall) if precision + recall > 0 else 0
+        prec_list.append(precision)
+        recall_list.append(recall)
+        f1_list.append(f1)
+
+        # BertScore (using F1 only here for simplicity)
+        P, R, bert_f1 = bert_score.score([pred], [gold], lang="en", rescale_with_baseline=True)
+        bert_f1_list.append(float(bert_f1.mean()))
+
+        # ROUGE-L (using F1)
         rouge_scores = scorer.score(gold, pred)
         rouge_f1_list.append(rouge_scores['rougeL'].fmeasure)
-    rouge_f1_score = sum(rouge_f1_list) / len(rouge_f1_list)
 
-    # Add METEOR calculation
-    meteor_f1_list = [meteor_score([gold], pred) for pred, gold in zip(pred_list, gold_list)]
-    meteor_f1_score = sum(meteor_f1_list) / len(meteor_f1_list)
+        # METEOR (F1 score)
+        meteor_f1_list.append(meteor_score([gold], pred))
+
+    # Compute micro-averaged metrics
+    micro_prec = sum(prec_list) / len(prec_list)
+    micro_recall = sum(recall_list) / len(recall_list)
+    micro_f1 = sum(f1_list) / len(f1_list)
+    
+    # Compute micro-averaged new metrics
+    micro_bert_f1 = sum(bert_f1_list) / len(bert_f1_list)
+    micro_rouge_f1 = sum(rouge_f1_list) / len(rouge_f1_list)
+    micro_meteor_f1 = sum(meteor_f1_list) / len(meteor_f1_list)
 
     return {
-        "Precision": precision,
-        "Recall": recall,
-        "F1": f1,
-        "BertScore F1": bert_f1_score,
-        "ROUGE-L F1": rouge_f1_score,
-        "METEOR F1": meteor_f1_score
+        "Precision": micro_prec,
+        "Recall": micro_recall,
+        "F1": micro_f1,
+        "BertScore F1": micro_bert_f1,
+        "ROUGE-L F1": micro_rouge_f1,
+        "METEOR F1": micro_meteor_f1
     }
 
 def run_evaluation(predictions, gold_labels):
@@ -128,7 +158,7 @@ def run_evaluation(predictions, gold_labels):
 
     # Output evaluation data for each question_type
     for question_type, data in type_data.items():
-        metrics = comp_metrics(data['pred_list'], data['gold_list'])
+        metrics = comp_metrics_new(data['pred_list'], data['gold_list'])
         print(f"Question Type: {question_type}")
         print(f" Precision: {metrics['Precision']:.2f}")
         print(f" Recall: {metrics['Recall']:.2f}")
@@ -139,7 +169,7 @@ def run_evaluation(predictions, gold_labels):
         print()
 
     # Calculate overall evaluation metrics
-    overall_metrics = comp_metrics(overall_pred_list, overall_gold_list)
+    overall_metrics = comp_metrics_new(overall_pred_list, overall_gold_list)
     print(f"Overall Metrics:")
     print(f" Precision: {overall_metrics['Precision']:.2f}")
     print(f" Recall: {overall_metrics['Recall']:.2f}")
